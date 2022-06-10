@@ -6,6 +6,7 @@
 #define ADS1115_SENSOR_1_ADDR   0x48     //ADS Address GND
 #define ADS1115_SENSOR_2_ADDR   0x49     //ADS Address VDD
 #define MEASURE                 ":MEAS?"        //SCPI
+#define OPEN_STATE              ":SET:STATE:CH"
 #define OPEN_CHANNEL            ":SET:OPEN:CH"
 #define OPEN_PUMP               ":SET:PUMP:CH"
 #define HEATER_ON               ":SET:HTR:ON"
@@ -14,6 +15,7 @@
 #define DONE                    Serial.println("Done");
 
 /*--- Function declarations ---*/
+String validateState(int channelInt, String valveState);
 String validateOpen(int channelInt,String timeAmmout);
 String validatePump(int channelInt,String timeAmmout, int pwmInt);
 
@@ -71,16 +73,37 @@ void loop() {
     if(command == MEASURE){
       CONFIRM;
       String results;
-      results = "ADS1 CH1: " + String(resultAds1[0]) +
-                 " ADS1 CH2: " + resultAds1[1] +
-                 " ADS1 CH3: " + resultAds1[2] +
-                 " ADS1 CH4: " + resultAds1[3] +
-                 " ADS2 CH1: " + resultAds2[0] +
-                 " ADS2 CH2: " + resultAds2[1] +
-                 " ADS2 CH3: " + resultAds2[2] +
-                 " ADS2 CH4: " + resultAds2[3];
+      results = String(resultAds1[0]) + ',' + resultAds1[1] + ',' + 
+                 resultAds1[2] + ',' + resultAds1[3] + ',' + 
+                 resultAds2[0] + ',' + resultAds2[1] + ',' + 
+                 resultAds2[2] + ',' + resultAds2[3];
       Serial.println(results);
       DONE;
+    }
+
+    if(command.startsWith(OPEN_STATE)){
+      CONFIRM;
+      //Split command
+      command = command.substring(13);
+      int space = command.indexOf(' ');
+      //Get channel parameter
+      String channel = command.substring(0,space);
+      int channelInt = channel.toInt();
+      //Get status parameter
+      String valveState = command.substring(space);
+      String validationResult = validateState(channelInt,valveState);
+      if(validationResult == "OK"){
+        cmdOpenChannel[channelInt-1] = false;
+        cmdOpenPump[channelInt-1] = false;
+        if(valveState == "ON"){
+          analogWrite(pwmPinsArr[channelInt-1], 255);
+        }else{
+          analogWrite(pwmPinsArr[channelInt-1], 0);
+        }
+        DONE;
+      }else{
+        Serial.println(validationResult);
+      }
     }
 
     if(command.startsWith(OPEN_CHANNEL)){
@@ -96,11 +119,9 @@ void loop() {
       
       String validationResult = validateOpen(channelInt,timeAmmount);
       if(validationResult == "OK"){
-          cmdOpenChannel[channelInt-1] = true;
-          timeOpenChannel[channelInt-1] = millis() + timeAmmount.toInt() * 100;
+        cmdOpenChannel[channelInt-1] = true;
+        timeOpenChannel[channelInt-1] = millis() + timeAmmount.toInt() * 100;
         analogWrite(pwmPinsArr[channelInt-1], 255);
-        //delay(timeAmmount.toInt() * 100);
-        //analogWrite(pwmPinsArr[channelInt-1], 0);
         DONE;
       }else{
         Serial.println(validationResult);
@@ -124,11 +145,9 @@ void loop() {
       //Validate result
       String validationResult = validatePump(channelInt,timeAmmount,pwmAmmount.toInt());
       if(validationResult == "OK"){
-          cmdOpenPump[channelInt-1] = true;
-          timeOpenPump[channelInt-1] = millis() + timeAmmount.toInt() * 100;
+        cmdOpenPump[channelInt-1] = true;
+        timeOpenPump[channelInt-1] = millis() + timeAmmount.toInt() * 100;
         analogWrite(pwmPinsArr[channelInt-1], pwmAmmount.toInt());
-        //delay(timeAmmount.toInt() * 100);
-        //analogWrite(pwmPinsArr[channelInt-1], 0);
         DONE;
       }else{
         Serial.println(validationResult);
@@ -136,15 +155,15 @@ void loop() {
     }
 
     if(command.startsWith(HEATER_ON)){
-      DONE;
-      analogWrite(heaterPin,255);
       CONFIRM;
+      analogWrite(heaterPin,255);
+      DONE;
     }
 
     if(command.startsWith(HEATER_OFF)){
-      DONE;
-      analogWrite(heaterPin,0);
       CONFIRM;
+      analogWrite(heaterPin,0);
+      DONE;
     }
   }
 
@@ -167,19 +186,26 @@ void loop() {
   for(int i=0;i<6;i++){
     if(cmdOpenChannel[i] && millis() > timeOpenChannel[i]){
       analogWrite(pwmPinsArr[i], 0);
-      Serial.println("CLOSE:CH:" + String(i+1));
       timeOpenChannel[i] = 0;
       cmdOpenChannel[i] = false;
     }
     if(cmdOpenPump[i] && millis() > timeOpenPump[i]){  
       analogWrite(pwmPinsArr[i], 0);
-      Serial.println("CLOSE:PUMP:" + String(i+1));
       timeOpenPump[i] = 0;
       cmdOpenPump[i] = false;
     }
   }
 
   command = "";
+}
+
+String validateState(int channelInt, String valveState){
+   if(channelInt < 1 ||  channelInt > 6){
+      return "ERR:CH:OUT_OF_RANGE";
+   }else if(valveState == "ON" || valveState == "OFF"){
+      return "ERR:STATE:OUT_OF_RANGE";
+   }
+   return "OK";
 }
 
 String validateOpen(int channelInt,String timeAmmout){
