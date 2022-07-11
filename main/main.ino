@@ -29,9 +29,15 @@ float resultAds2[4];                //Measurment arrays ADS2
 //Flags
 bool cmdOpenChannel[6] = {false,false,false,false,false,false};
 bool cmdOpenPump[6] = {false,false,false,false,false,false};
-unsigned long timeOpenChannel[6] = {0,0,0,0,0,0};
-unsigned long timeOpenPump[6] = {0,0,0,0,0,0};
 
+/*--- Local types ---*/
+typedef struct OpenEntity{
+  unsigned long time[6] = {0,0,0,0,0,0};
+  unsigned long timeStamp[6] = {0,0,0,0,0,0};
+} OpenEntity_T;
+
+OpenEntity_T Channel;
+OpenEntity_T Pump;
 
 void setup() {
   Serial.begin(115200);
@@ -120,7 +126,8 @@ void loop() {
       String validationResult = validateOpen(channelInt,timeAmmount);
       if(validationResult == "OK"){
         cmdOpenChannel[channelInt-1] = true;
-        timeOpenChannel[channelInt-1] = millis() + timeAmmount.toInt() * 100;
+        Channel.time[channelInt-1] = timeAmmount.toInt() * 100;
+        Channel.timeStamp[channelInt-1] = millis();
         analogWrite(pwmPinsArr[channelInt-1], 255);
         DONE;
       }else{
@@ -146,7 +153,8 @@ void loop() {
       String validationResult = validatePump(channelInt,timeAmmount,pwmAmmount.toInt());
       if(validationResult == "OK"){
         cmdOpenPump[channelInt-1] = true;
-        timeOpenPump[channelInt-1] = millis() + timeAmmount.toInt() * 100;
+        Pump.time[channelInt-1] = timeAmmount.toInt() * 100;
+        Pump.timeStamp[channelInt-1] = millis();
         analogWrite(pwmPinsArr[channelInt-1], pwmAmmount.toInt());
         DONE;
       }else{
@@ -184,14 +192,16 @@ void loop() {
   }
 
   for(int i=0;i<6;i++){
-    if(cmdOpenChannel[i] && millis() > timeOpenChannel[i]){
+    if(cmdOpenChannel[i] && millis() - Channel.timeStamp[i] < Channel.time[i]){
       analogWrite(pwmPinsArr[i], 0);
-      timeOpenChannel[i] = 0;
+      Channel.time[i] = 0;
+      Channel.timeStamp[i] = 0; 
       cmdOpenChannel[i] = false;
     }
-    if(cmdOpenPump[i] && millis() > timeOpenPump[i]){  
+    if(cmdOpenPump[i] && millis() - Pump.timeStamp[i] < Pump.time[i]){  
       analogWrite(pwmPinsArr[i], 0);
-      timeOpenPump[i] = 0;
+      Pump.time[i] = 0;
+      Pump.timeStamp[i] = 0;
       cmdOpenPump[i] = false;
     }
   }
